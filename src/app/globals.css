@@ -1,0 +1,99 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --font-instrument-serif: 'Instrument Serif', Georgia, serif;
+    --font-inter: 'Inter', system-ui, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    border-color: theme('colors.base.border');
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-base text-ink font-sans;
+    min-height: 100dvh;
+  }
+
+  ::selection {
+    background-color: theme('colors.gold.subtle');
+    color: theme('colors.gold.DEFAULT');
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-base-border rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-ink-muted;
+  }
+}
+
+@layer components {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Gradient text utility */
+  .text-gradient-gold {
+    background: linear-gradient(135deg, #c9a96e 0%, #dfc08f 50%, #c9a96e 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Subtle grid background for hero */
+  .bg-grid {
+    background-image:
+      linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+    background-size: 48px 48px;
+  }
+
+  /* Glow effect for interactive elements */
+  .glow-gold {
+    box-shadow: 0 0 0 1px rgba(201,169,110,0.3), 0 0 40px rgba(201,169,110,0.08);
+  }
+
+  /* Chat bubble styles */
+  .chat-bubble-user {
+    @apply bg-base-raised border border-base-border rounded-xl rounded-br-sm px-4 py-3 text-sm text-ink;
+  }
+
+  .chat-bubble-assistant {
+    @apply bg-gold-subtle border border-gold/20 rounded-xl rounded-bl-sm px-4 py-3 text-sm text-ink;
+  }
+}
+
+@layer utilities {
+  .border-subtle {
+    @apply border border-base-border;
+  }
+
+  .surface {
+    @apply bg-base-surface border border-base-border;
+  }
+
+  .surface-raised {
+    @apply bg-base-raised border border-base-border;
+  }
+}
