@@ -217,6 +217,67 @@ export interface ContactRequest {
 
 // ─── API Response ─────────────────────────────────────────────────────
 
+// ─── Content Guard ────────────────────────────────────────────────────────────
+
+export type GuardFlag =
+  | 'protected_characteristic'
+  | 'prompt_injection'
+  | 'pii_request'
+  | 'impersonation_abuse'
+  | 'off_topic_harmful'
+
+export interface GuardResult {
+  decision: 'ALLOW' | 'BLOCK'
+  flags: GuardFlag[]
+  confidence: number
+  canned_response: string | null
+  low_confidence_flag?: boolean
+}
+
+// ─── Question Suggestions ─────────────────────────────────────────────────────
+
+export type QuestionCategory =
+  | 'experience'
+  | 'skills'
+  | 'availability'
+  | 'education'
+  | 'projects'
+  | 'personality'
+
+export interface QuestionSuggestion {
+  id: string
+  text: string
+  category: QuestionCategory
+  source: 'static' | 'profile' | 'popular'
+  count?: number  // populated when source is 'popular'
+}
+
+// ─── Question Analytics ───────────────────────────────────────────────────────
+
+export interface QuestionAnalytic {
+  id: string
+  persona_id: string
+  topic: string
+  sample_question: string | null
+  count: number
+  last_asked_at: string
+  updated_at: string
+}
+
+// ─── Guard Log ────────────────────────────────────────────────────────────────
+
+export interface GuardLog {
+  id: string
+  persona_id: string
+  session_id: string | null
+  flags: GuardFlag[]
+  confidence: number
+  message_snippet: string | null
+  created_at: string
+}
+
+// ─── API Response ─────────────────────────────────────────────────────────────
+
 export interface ApiError {
   error: string
   code?: string

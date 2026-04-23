@@ -22,6 +22,56 @@ model: claude-sonnet-4-6
                                        pipeline-orchestrator → notification
 ```
 
+## Security checks (run BEFORE any parsing)
+
+These checks happen synchronously on the raw file/URL before any LLM or parsing is involved. Use the utilities in `src/lib/security/`.
+
+### For file uploads
+```typescript
+import { validateDocument } from '@/lib/security'
+
+const result = validateDocument({
+  filename: originalName,
+  sizeBytes: file.size,
+  declaredMime: file.type,
+  firstBytes: new Uint8Array(await file.slice(0, 8).arrayBuffer()),
+})
+if (!result.safe) {
+  // Update document to error, return { ok: false, error: result.reason }
+}
+```
+
+**Blocks:**
+- Files over 10 MB
+- Non-allowlisted MIME types (only PDF, DOCX, DOC, TXT, Markdown accepted)
+- Executables disguised as documents (magic byte mismatch — e.g., a .exe renamed to .pdf)
+- Path traversal in filename (`../`, `\..`)
+- Empty files
+
+### For external URLs
+```typescript
+import { validateUrl, validateFetchedContentType } from '@/lib/security'
+
+const urlResult = validateUrl(submittedUrl)
+if (!urlResult.safe) {
+  // Reject with urlResult.reason
+}
+
+// After fetch, also validate the response content type:
+const contentType = response.headers.get('content-type')
+if (!validateFetchedContentType(contentType)) {
+  // Reject — the URL returned a binary or unexpected type
+}
+```
+
+**Blocks:**
+- Private/loopback IP ranges (SSRF prevention): 10.x.x.x, 172.16-31.x.x, 192.168.x.x, 127.x.x.x
+- Cloud metadata endpoints: 169.254.169.254 (AWS/GCP), metadata.google.internal
+- File/ftp/data URL schemes
+- URLs with embedded credentials (user:pass@host)
+- Non-HTTPS URLs in production
+- Response content types that aren't HTML/text (prevents binary data ingestion)
+
 ## Input
 
 ```json

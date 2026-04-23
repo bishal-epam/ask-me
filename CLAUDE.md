@@ -97,10 +97,11 @@ Claude Code sub-agents are defined in `.claude/agents/`. Each agent handles a sp
 
 | Agent | File | Responsibility |
 |-------|------|----------------|
-| Document Processor | `agents/document-processor.md` | Stage 1 — parse files into plain text + section metadata |
+| Document Processor | `agents/document-processor.md` | Stage 1 — security checks, then parse files into plain text + section metadata |
 | Profile Extraction | `agents/profile-extraction-agent.md` | Stage 2a (parallel) — extract typed facts: skills, experience timeline, seniority, reportees |
 | Embedding | `agents/embedding-agent.md` | Stage 2b (parallel) — chunk text + store pgVector embeddings |
-| Chat | `agents/chat-agent.md` | Tool-use conversational agent: routes to structured profile, vector search, or fitment analysis per query |
+| **Content Guard** | `agents/content-guard-agent.md` | Pre-chat classifier — runs before every visitor message; blocks protected characteristics, prompt injection, PII requests |
+| Chat | `agents/chat-agent.md` | Tool-use conversational agent (runs after guard); routes to structured profile, vector search, or fitment analysis |
 | Fitment | `agents/fitment-agent.md` | Score candidate match against a job description — called by chat-agent |
 
 ## Custom Commands
@@ -117,6 +118,39 @@ Claude Code sub-agents are defined in `.claude/agents/`. Each agent handles a sp
 - **supabase**: Direct DB introspection and query execution via MCP
 - **filesystem**: Read/write project files during agentic workflows
 - **playwright**: Browser automation for E2E test generation
+
+## Security Architecture
+
+### Chat safety (two-layer defence)
+
+```
+Visitor message
+      │
+      ▼
+[Layer 1] content-guard-agent         ← Haiku, fast, cheap
+          Classification: ALLOW / BLOCK
+          Flags: protected_characteristic | prompt_injection | pii_request | impersonation_abuse
+          BLOCK → canned response + guard_logs entry
+      │ ALLOW
+      ▼
+[Layer 2] chat-agent guardrails       ← Fallback if guard misses edge cases
+          Self-applies refusals + logs to guard_logs
+      │
+      ▼
+      Tool-use response
+```
+
+### Document safety (deterministic, no LLM)
+
+All validation lives in `src/lib/security/` — runs before any parsing:
+- **`url-guard.ts`**: SSRF prevention (private IPs, cloud metadata endpoints), scheme validation, content-type gating
+- **`document-guard.ts`**: MIME allowlist, file size (10 MB cap), magic byte verification (catches executables disguised as PDFs), filename path traversal checks
+
+### Query analytics & review
+
+- Every visitor message that passes the guard has its **topic** recorded in `question_analytics` (upsert with count increment)
+- Profile owners see conversation history in the dashboard, with `reviewed_at` tracking which sessions they've already seen
+- `guard_logs` table persists every BLOCK for abuse monitoring and guard calibration
 
 ## Document Processing Pipeline
 

@@ -3,7 +3,9 @@
     "allow": [
       "Bash(npm run *)",
       "Bash(curl -s http://localhost:3000/)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(npm test *)",
+      "Bash(git add *)"
     ]
   }
 }
