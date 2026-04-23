@@ -15,10 +15,11 @@ stack:
   email: Resend
   hosting: Vercel
 agents:
-  - document-processor
-  - embedding-agent
-  - chat-agent
-  - fitment-agent
+  - document-processor          # stage 1: text extraction
+  - profile-extraction-agent    # stage 2a: structured facts (parallel)
+  - embedding-agent             # stage 2b: pgVector chunks (parallel)
+  - chat-agent                  # conversational interface (tool-use)
+  - fitment-agent               # job-match scoring (called by chat-agent)
 mcp_servers:
   - supabase
   - filesystem
@@ -47,6 +48,7 @@ src/
 ├── lib/
 │   ├── supabase/            # Supabase client/server/middleware
 │   ├── ai/                  # AI provider abstraction (Ollama/OpenAI/Anthropic)
+│   ├── pipeline/            # Deterministic document processing state machine
 │   ├── embeddings/          # Document chunking + vector storage
 │   └── email/               # Resend email templates + sender
 ├── hooks/                   # React hooks
@@ -95,10 +97,11 @@ Claude Code sub-agents are defined in `.claude/agents/`. Each agent handles a sp
 
 | Agent | File | Responsibility |
 |-------|------|----------------|
-| Document Processor | `agents/document-processor.md` | Parse uploaded files (PDF, DOCX, links) into raw text |
-| Embedding Agent | `agents/embedding-agent.md` | Chunk text + store vectors in pgVector |
-| Chat Agent | `agents/chat-agent.md` | RAG-based conversational responses |
-| Fitment Agent | `agents/fitment-agent.md` | Score candidate fit against job descriptions |
+| Document Processor | `agents/document-processor.md` | Stage 1 — parse files into plain text + section metadata |
+| Profile Extraction | `agents/profile-extraction-agent.md` | Stage 2a (parallel) — extract typed facts: skills, experience timeline, seniority, reportees |
+| Embedding | `agents/embedding-agent.md` | Stage 2b (parallel) — chunk text + store pgVector embeddings |
+| Chat | `agents/chat-agent.md` | Tool-use conversational agent: routes to structured profile, vector search, or fitment analysis per query |
+| Fitment | `agents/fitment-agent.md` | Score candidate match against a job description — called by chat-agent |
 
 ## Custom Commands
 
@@ -115,17 +118,48 @@ Claude Code sub-agents are defined in `.claude/agents/`. Each agent handles a sp
 - **filesystem**: Read/write project files during agentic workflows
 - **playwright**: Browser automation for E2E test generation
 
+## Document Processing Pipeline
+
+The pipeline is a deterministic state machine (`src/lib/pipeline/`). No LLM is involved in routing — only in execution of each stage.
+
+```
+[upload]
+    │
+    ▼
+document-processor          → documents.pipeline_stage: text_extracting → text_extracted
+    │
+    ├─────────────────────────────────────────┐
+    ▼                                         ▼
+profile-extraction-agent             embedding-agent
+(structured facts → personas.        (chunks + vectors →
+ structured_profile)                  document_chunks)
+pipeline_stage: profile_extracted    pipeline_stage: embedded
+    │                                         │
+    └──────────────── both settle ────────────┘
+                           │
+                           ▼
+                    documents.status: ready
+                    pipeline_stage: complete
+                           │
+                           ▼
+                     email notification
+```
+
+**Parallel execution**: stages 2a and 2b (`Promise.allSettled`) are independent. A failure in one does not block the other — the document can still be usable for chat even with a partial structured profile.
+
+**State transitions** are written to `documents.pipeline_stage`. The coarse `documents.status` (`pending/processing/ready/error`) is only updated at the start and end of the pipeline.
+
 ## Database Schema Overview
 
 See `supabase/migrations/` for full DDL. Key tables:
 
 - `profiles` — extends `auth.users`, stores public profile data
-- `personas` — a profile's public chatbot presence (slug, title, purpose)
-- `documents` — uploaded files/links attached to a persona
-- `document_chunks` — chunked text with pgVector embeddings
+- `personas` — a profile's public chatbot presence; `structured_profile JSONB` holds extracted facts
+- `documents` — uploaded files/links; `pipeline_stage` tracks fine-grained processing state
+- `document_chunks` — chunked text with pgVector embeddings (768-dim dev / 1536-dim prod)
 - `chat_sessions` — visitor conversation sessions
-- `chat_messages` — individual turns (role: user | assistant)
-- `interview_requests` — recruiter/marketer contact requests
+- `chat_messages` — individual turns (role: user | assistant | system)
+- `contact_requests` — recruiter/marketer contact requests
 - `notifications` — email notification queue
 
 ## Environment Variables

@@ -9,11 +9,96 @@ export type DocumentType = 'cv' | 'portfolio' | 'bio' | 'link' | 'certificate' |
 
 export type DocumentStatus = 'pending' | 'processing' | 'ready' | 'error'
 
+export type PipelineStage =
+  | 'pending'
+  | 'text_extracting'
+  | 'text_extracted'
+  | 'extracting_profile'
+  | 'embedding'
+  | 'profile_extracted'
+  | 'embedded'
+  | 'complete'
+  | 'failed'
+
 export type ContactRequestStatus = 'pending' | 'seen' | 'accepted' | 'declined'
 
 export type MessageRole = 'user' | 'assistant' | 'system'
 
 export type NotificationType = 'new_chat' | 'contact_request' | 'document_ready' | 'document_error'
+
+// ─── Structured Profile (produced by profile-extraction-agent) ────────
+
+export type SkillCategory = 'technical' | 'soft' | 'domain'
+
+export type Seniority =
+  | 'intern'
+  | 'junior'
+  | 'mid'
+  | 'senior'
+  | 'lead'
+  | 'principal'
+  | 'director'
+  | 'vp'
+  | 'c-level'
+
+export type CareerTrajectory = 'ascending' | 'lateral' | 'pivoting'
+
+export type AvailabilityStatus = 'open' | 'actively_looking' | 'passive' | 'not_looking'
+
+export interface ExtractedSkill {
+  name: string
+  category: SkillCategory
+  years?: number
+  confidence: number  // 0–1
+}
+
+export interface ExtractedExperience {
+  company: string
+  role: string
+  seniority: Seniority
+  start_date: string        // "YYYY-MM" or "YYYY"
+  end_date: string          // "YYYY-MM" | "YYYY" | "present"
+  tenure_months: number
+  reportees?: number
+  industries?: string[]
+  highlights?: string[]     // max 3 key achievements
+}
+
+export interface ExtractedEducation {
+  institution: string
+  degree?: string           // "BSc", "MBA"
+  field?: string            // "Computer Science"
+  year?: number
+}
+
+export interface ExtractedCertification {
+  name: string
+  issuer?: string
+  year?: number
+}
+
+export interface StructuredProfile {
+  skills: ExtractedSkill[]
+  experience: ExtractedExperience[]
+  total_years_experience: number
+  current_seniority: Seniority
+  career_trajectory: CareerTrajectory
+  education: ExtractedEducation[]
+  certifications?: ExtractedCertification[]
+  availability: {
+    status: AvailabilityStatus
+    available_from?: string
+    preferred_work_type?: ('remote' | 'hybrid' | 'onsite')[]
+    preferred_locations?: string[]
+  }
+  industries: string[]
+  languages?: { language: string; proficiency: string }[]
+  // Extraction metadata
+  extraction_version: string
+  extracted_at: string
+  document_ids: string[]
+  confidence_score: number  // 0–1 overall confidence
+}
 
 // ─── Profile ──────────────────────────────────────────────────────────
 
@@ -42,6 +127,7 @@ export interface Persona {
   chat_enabled: boolean
   chat_greeting: string | null
   metadata: Record<string, unknown>
+  structured_profile: StructuredProfile | null
   created_at: string
   updated_at: string
 }
@@ -62,6 +148,7 @@ export interface Document {
   file_url: string | null
   content: string | null
   status: DocumentStatus
+  pipeline_stage: PipelineStage
   error_message: string | null
   chunk_count: number
   word_count: number | null

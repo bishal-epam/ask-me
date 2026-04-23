@@ -44,6 +44,7 @@ export interface Database {
           chat_enabled: boolean
           chat_greeting: string | null
           metadata: Json
+          structured_profile: Json
           created_at: string
           updated_at: string
         }
@@ -74,6 +75,7 @@ export interface Database {
           file_url: string | null
           content: string | null
           status: 'pending' | 'processing' | 'ready' | 'error'
+          pipeline_stage: string
           error_message: string | null
           chunk_count: number
           word_count: number | null
@@ -91,6 +93,7 @@ export interface Database {
           file_url?: string | null
           content?: string | null
           status?: 'pending' | 'processing' | 'ready' | 'error'
+          pipeline_stage?: string
           error_message?: string | null
           chunk_count?: number
           word_count?: number | null
