@@ -1,18 +1,4 @@
-import type { Metadata } from 'next'
-
-export const metadata: Metadata = { title: 'Conversations' }
-
-export default function ChatPage() {
-  return (
-    <div className="p-8 max-w-3xl">
-      <h1 className="text-xl font-medium text-ink mb-1">Conversations</h1>
-      <p className="text-sm text-ink-muted mb-8">
-        Every conversation visitors have had with your AI
-      </p>
-
-      <div className="rounded-lg border border-base-border bg-base-surface p-6 text-center text-sm text-ink-muted">
-        No conversations yet. Share your profile link to get started.
-      </div>
-    </div>
-  )
+import { redirect } from 'next/navigation'
+export default function ChatRedirect() {
+  redirect('/dashboard/chat')
 }
