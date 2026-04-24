@@ -1,15 +1,10 @@
 import pino from 'pino'
 
-const isDev = process.env.NODE_ENV === 'development'
-
+// pino-pretty uses thread-stream (worker threads) which crashes under Next.js
+// Turbopack because the worker can't resolve node_modules from Turbopack's
+// virtual FS. Plain pino writes JSON to stdout — works everywhere.
 export const logger = pino({
-  level: process.env.LOG_LEVEL ?? (isDev ? 'debug' : 'info'),
-  ...(isDev && {
-    transport: {
-      target: 'pino-pretty',
-      options: { colorize: true, ignore: 'pid,hostname' },
-    },
-  }),
+  level: process.env.LOG_LEVEL ?? (process.env.NODE_ENV === 'development' ? 'debug' : 'info'),
   base: {
     env: process.env.NODE_ENV,
     service: 'ask-me',

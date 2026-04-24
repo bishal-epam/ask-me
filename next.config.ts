@@ -6,6 +6,8 @@ const nextConfig: NextConfig = {
       bodySizeLimit: '10mb',
     },
   },
+  // pdfjs-dist and mammoth use native Node.js modules — keep them server-side only
+  serverExternalPackages: ['pdfjs-dist', 'mammoth'],
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: '*.supabase.co' },

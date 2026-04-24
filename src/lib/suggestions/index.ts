@@ -51,7 +51,7 @@ function profileAwareSuggestions(profile: StructuredProfile): QuestionSuggestion
   }
 
   // Top skills — name the top 3 technical skills by confidence
-  const topSkills = profile.skills
+  const topSkills = (profile.skills ?? [])
     .filter((s) => s.category === 'technical')
     .sort((a, b) => b.confidence - a.confidence)
     .slice(0, 3)
@@ -67,9 +67,9 @@ function profileAwareSuggestions(profile: StructuredProfile): QuestionSuggestion
   }
 
   // Team leadership — only ask if there's evidence
-  const hasManaged = profile.experience.some((e) => (e.reportees ?? 0) > 0)
+  const hasManaged = (profile.experience ?? []).some((e) => (e.reportees ?? 0) > 0)
   if (hasManaged) {
-    const maxReportees = Math.max(...profile.experience.map((e) => e.reportees ?? 0))
+    const maxReportees = Math.max(...(profile.experience ?? []).map((e) => e.reportees ?? 0))
     suggestions.push({
       id: 'pa-mgmt',
       text: `They've managed teams of up to ${maxReportees} — what does their leadership style look like?`,
@@ -79,8 +79,9 @@ function profileAwareSuggestions(profile: StructuredProfile): QuestionSuggestion
   }
 
   // Availability — if explicitly known
-  if (profile.availability.status === 'actively_looking' || profile.availability.status === 'open') {
-    const from = profile.availability.available_from
+  const availStatus = profile.availability?.status
+  if (availStatus === 'actively_looking' || availStatus === 'open') {
+    const from = profile.availability?.available_from
     suggestions.push({
       id: 'pa-avail',
       text: from

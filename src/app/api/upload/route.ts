@@ -1,6 +1,8 @@
+import { after } from 'next/server'
 import { NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { validateDocument } from '@/lib/security/document-guard'
+import { runDocumentPipeline } from '@/lib/pipeline'
 import { getLogger } from '@/lib/logger'
 
 const log = getLogger('api:upload')
@@ -92,7 +94,7 @@ export async function POST(request: Request) {
       name: file.name,
       original_name: file.name,
       doc_type: inferDocType(file.name),
-      file_url: storagePath,
+      file_url: storagePath,  // store path; extractor downloads via admin client
       status: 'pending',
       pipeline_stage: 'pending',
     })
@@ -101,11 +103,19 @@ export async function POST(request: Request) {
 
   if (docError) {
     log.error({ err: docError }, 'Document record creation failed')
-    // Clean up storage object since DB insert failed
     await admin.storage.from('documents').remove([storagePath])
     return NextResponse.json({ error: 'Failed to save document' }, { status: 500 })
   }
 
-  log.info({ docId: doc.id, name: file.name }, 'Document uploaded')
+  log.info({ docId: doc.id, name: file.name }, 'Document uploaded — queuing pipeline')
+
+  after(async () => {
+    try {
+      await runDocumentPipeline({ documentId: doc.id, personaId: persona.id, profileId: user.id })
+    } catch (err) {
+      log.error({ err, docId: doc.id }, 'Pipeline failed')
+    }
+  })
+
   return NextResponse.json(doc, { status: 201 })
 }

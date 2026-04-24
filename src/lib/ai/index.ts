@@ -15,7 +15,35 @@ export function getLanguageModel(): LanguageModel {
       const ollama = createOllama({
         baseURL: `${process.env.OLLAMA_BASE_URL ?? 'http://localhost:11434'}/api`,
       })
-      return ollama(process.env.OLLAMA_MODEL ?? 'qwen2.5:7b')
+      const numCtx = parseInt(process.env.OLLAMA_NUM_CTX ?? '16384', 10)
+      return ollama(process.env.OLLAMA_MODEL ?? 'qwen2.5:latest', { numCtx, structuredOutputs: true })
+    }
+    case 'openai': {
+      const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY! })
+      return openai(process.env.OPENAI_MODEL ?? 'gpt-4o-mini')
+    }
+    case 'anthropic': {
+      const anthropic = createAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
+      return anthropic(process.env.ANTHROPIC_MODEL ?? 'claude-sonnet-4-6')
+    }
+    default:
+      throw new Error(`Unknown AI_PROVIDER: ${provider as string}`)
+  }
+}
+
+// Use for streaming + tool-use endpoints. Omits structuredOutputs on Ollama because
+// format:"json" conflicts with tool calling — the model outputs JSON prose instead of
+// making tool calls, which causes streamText to hang indefinitely.
+export function getStreamingModel(): LanguageModel {
+  log.debug({ provider }, 'Creating streaming model')
+
+  switch (provider) {
+    case 'ollama': {
+      const ollama = createOllama({
+        baseURL: `${process.env.OLLAMA_BASE_URL ?? 'http://localhost:11434'}/api`,
+      })
+      const numCtx = parseInt(process.env.OLLAMA_NUM_CTX ?? '16384', 10)
+      return ollama(process.env.OLLAMA_MODEL ?? 'qwen2.5:latest', { numCtx })
     }
     case 'openai': {
       const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY! })

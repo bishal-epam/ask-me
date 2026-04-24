@@ -1,5 +1,8 @@
 import { getLogger } from '@/lib/logger'
 import { createAdminClient } from '@/lib/supabase/server'
+import { extractText as runTextExtraction } from '@/lib/documents/extract'
+import { extractStructuredProfile as runProfileExtraction } from '@/lib/profile/extract'
+import { generateEmbeddings as runEmbedding } from '@/lib/embeddings'
 import type {
   PipelineContext,
   PipelineResult,
@@ -97,22 +100,16 @@ export async function runDocumentPipeline(ctx: PipelineContext): Promise<Pipelin
 
 // ─── Stage implementations (stubs — wired in feature iterations) ──────────────
 
-async function extractText(_ctx: PipelineContext): Promise<TextExtractionOutput> {
-  // TODO: implement in document-processing iteration
-  // Will use pdfjs-dist / mammoth / URL fetch depending on doc_type
-  throw new Error('extractText: not yet implemented')
+async function extractText(ctx: PipelineContext): Promise<TextExtractionOutput> {
+  return runTextExtraction(ctx)
 }
 
-async function extractStructuredProfile(_ctx: PipelineContext): Promise<ProfileExtractionOutput> {
-  // TODO: implement in profile-extraction iteration
-  // Calls profile-extraction-agent logic
-  throw new Error('extractStructuredProfile: not yet implemented')
+async function extractStructuredProfile(ctx: PipelineContext): Promise<ProfileExtractionOutput> {
+  return runProfileExtraction(ctx)
 }
 
-async function generateEmbeddings(_ctx: PipelineContext): Promise<EmbeddingOutput> {
-  // TODO: implement in embedding iteration
-  // Calls embedding-agent logic (chunks + vector inserts)
-  throw new Error('generateEmbeddings: not yet implemented')
+async function generateEmbeddings(ctx: PipelineContext): Promise<EmbeddingOutput> {
+  return runEmbedding(ctx)
 }
 
 async function notifyOwner(_ctx: PipelineContext): Promise<void> {
