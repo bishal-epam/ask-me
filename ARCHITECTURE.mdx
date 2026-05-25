@@ -1,0 +1,448 @@
+# Ask-me Architecture & Components Breakdown
+
+## Project Overview
+
+**Ask-me** is a personalized AI interaction platform where users (jobseekers, creators, freelancers) upload documents and links to create a personal AI chatbot that speaks on their behalf. Visitors (recruiters, marketers, corporates) interact with these bots to evaluate, connect, and collaborate.
+
+**Status**: Active (v0.1.0)  
+**Owner**: Bishal  
+**Hosted on**: Vercel
+
+---
+
+## 🏗️ Technology Stack
+
+### Runtime & Language
+- **Runtime**: Node.js 24
+- **Language**: TypeScript 5 (strict mode with no unchecked index access)
+- **Bundler**: Next.js 15 with Turbopack for fast builds
+
+### Frontend
+- **Framework**: Next.js 15 App Router (Server Components by default)
+- **Styling**: Tailwind CSS 3 + custom design tokens
+- **Animations**: Framer Motion
+- **UI Kit**: Lucide React icons
+
+### Backend
+- **API Layer**: Next.js API Routes
+- **Database**: Supabase PostgreSQL + pgVector (vector embeddings)
+- **Authentication**: Supabase Auth (email + OAuth)
+- **Edge Functions**: Supabase Edge Functions (serverless)
+
+### AI & ML
+- **Development**: Ollama (qwen2.5:7b chat model, nomic-embed-text embeddings)
+- **Production**: OpenAI (gpt-4o-mini) or Anthropic (claude-sonnet-4-6)
+- **Embedding Dimensions**: 768 (dev) / 1536 (prod)
+- **AI Framework**: Vercel AI SDK with provider abstraction
+
+### Additional Services
+- **Email**: Resend (transactional emails)
+- **PDF Processing**: pdfjs-dist
+- **Document Conversion**: Mammoth (Word docs)
+- **Logging**: Pino with pretty printing
+- **Validation**: Zod schemas
+- **Testing**: Vitest (unit) + Playwright (E2E)
+
+---
+
+## 📁 Project Structure
+
+```
+ask-me/
+├── src/
+│   ├── app/                    # Next.js 15 App Router
+│   │   ├── (auth)/             # Auth routes (login, signup)
+│   │   ├── (dashboard)/        # Authenticated user dashboard
+│   │   ├── (public)/[username]/ # Public chatbot personas
+│   │   └── api/                # API routes
+│   ├── components/             # React components
+│   │   ├── auth/               # Login/signup forms
+│   │   ├── chat/               # Chat UI (input, messages, suggestions)
+│   │   ├── landing/            # Landing page sections
+│   │   ├── onboarding/         # Onboarding flows
+│   │   ├── profile/            # Profile management
+│   │   ├── upload/             # Document upload
+│   │   └── ui/                 # Reusable primitives (buttons, etc)
+│   ├── lib/                    # Core business logic
+│   │   ├── ai/                 # AI provider abstraction
+│   │   ├── auth/               # Authentication actions
+│   │   ├── chat/               # Chat operations (guard, fitment)
+│   │   ├── documents/          # Document extraction
+│   │   ├── email/              # Email templates & sending
+│   │   ├── embeddings/         # Chunking & vector storage
+│   │   ├── logger.ts           # Pino logging setup
+│   │   ├── personas/           # Persona management actions
+│   │   ├── pipeline/           # Document processing pipeline
+│   │   ├── profile/            # Profile extraction
+│   │   ├── security/           # URL & document guards
+│   │   ├── suggestions/        # Chat suggestions
+│   │   └── supabase/           # Supabase clients (server/browser)
+│   ├── hooks/                  # React hooks (client-side)
+│   ├── middleware.ts           # Next.js middleware
+│   ├── types/                  # TypeScript definitions
+│   └── utils/                  # Pure utility functions
+├── supabase/
+│   ├── migrations/             # SQL migrations (001_init.sql, etc)
+│   └── seed.ts                 # Development seed data
+├── tests/
+│   ├── unit/                   # Vitest unit tests
+│   └── e2e/                    # Playwright E2E tests
+└── Configuration files (tsconfig, tailwind.config, etc)
+```
+
+---
+
+## 🔄 Document Processing Pipeline
+
+The **deterministic state machine** processes uploaded documents in stages:
+
+```
+┌─────────────┐
+│   Upload    │
+└──────┬──────┘
+       │
+       ▼
+┌─────────────────────────────┐
+│  document-processor-agent   │ Stage 1: Security checks, text extraction
+│ (MIME validation, magic     │ Output: plaintext + section metadata
+│  bytes, size limits)        │ State: text_extracting → text_extracted
+└──────┬──────────────────────┘
+       │
+       ├───────────────────────────────────────┐
+       │                                       │
+       ▼                                       ▼
+┌──────────────────────┐           ┌────────────────────┐
+│ profile-extraction   │           │ embedding-agent    │ Stage 2a & 2b (Parallel)
+│ -agent (Stage 2a)    │           │ (Stage 2b)         │
+│                      │           │                    │
+│ Extract structured   │           │ Chunk text         │
+│ facts:               │           │ Store pgVector     │
+│ • Skills             │           │ embeddings         │
+│ • Experience timeline│           │                    │
+│ • Seniority level    │           │ State: embedding   │
+│ • Reportees          │           │ → embedded         │
+│                      │           │                    │
+│ State:               │           │                    │
+│ extracting_profile   │           │                    │
+│ → profile_extracted  │           │                    │
+└──────┬───────────────┘           └────────┬───────────┘
+       │                                    │
+       └──────────────┬─────────────────────┘
+                      │
+                      ▼
+      ┌────────────────────────────────┐
+      │  Both stages complete (or fail)│
+      │ documents.status: ready        │
+      │ pipeline_stage: complete       │
+      └────────────────────────────────┘
+                      │
+                      ▼
+           ┌──────────────────────┐
+           │ Email notification   │
+           └──────────────────────┘
+```
+
+### Key Features
+- **Parallel execution**: Stages 2a & 2b run independently with `Promise.allSettled()`
+- **Fault tolerance**: Failure in one stage doesn't block the other
+- **Fine-grained state**: `pipeline_stage` tracks detailed progress; `status` is coarse (pending/processing/ready/error)
+- **No LLM routing**: Pipeline routing is deterministic; only execution uses AI
+
+---
+
+## 🤖 AI Agents (Sub-systems)
+
+Each agent handles a specific domain within the document processing or chat flow:
+
+| Agent | File | Responsibility |
+|-------|------|-----------------|
+| **Document Processor** | `agents/document-processor.md` | Stage 1 — security checks, parse files into plaintext + metadata |
+| **Profile Extraction** | `agents/profile-extraction-agent.md` | Stage 2a — extract typed facts (skills, experience, seniority, reportees) |
+| **Embedding** | `agents/embedding-agent.md` | Stage 2b — chunk text, compute & store pgVector embeddings |
+| **Content Guard** | `agents/content-guard-agent.md` | Pre-chat classifier; blocks protected characteristics, prompt injection, PII requests |
+| **Chat** | `agents/chat-agent.md` | Tool-use conversational interface; routes to profile, vector search, or fitment |
+| **Fitment** | `agents/fitment-agent.md` | Score candidate match against job description (called by chat-agent) |
+
+---
+
+## 🔐 Security Architecture
+
+### Two-Layer Chat Defense
+
+```
+Visitor Message
+    │
+    ▼
+[Layer 1] Content Guard         ← Haiku/fast/cheap
+          Classification: ALLOW or BLOCK
+          Flags checked:
+            • protected_characteristic (race, gender, age, etc)
+            • prompt_injection (system prompt, jailbreak attempts)
+            • pii_request (address, phone, bank details)
+            • impersonation_abuse (forge reference letters)
+            • off_topic_harmful (harassment, threats)
+          BLOCK → canned response + log to guard_logs
+    │ ALLOW
+    ▼
+[Layer 2] Chat Agent Guardrails ← Fallback, self-enforcing
+          Tool-use responses with refusals
+          Logs to guard_logs table
+    │
+    ▼
+    Chat Response
+```
+
+### Document Safety (Deterministic, No LLM)
+
+All validation in `src/lib/security/`:
+
+- **`url-guard.ts`**: SSRF prevention (blocks private IPs, cloud metadata endpoints), scheme validation, content-type gating
+- **`document-guard.ts`**: MIME allowlist, 10 MB file size cap, magic byte verification (prevents executables disguised as PDFs), filename path traversal checks
+
+### Query Analytics & Review
+
+- Every visitor message logs its **topic** to `question_analytics` table (upsert + count increment)
+- Profile owners see conversation history in dashboard with `reviewed_at` tracking
+- `guard_logs` table persists all BLOCK decisions for abuse monitoring
+
+---
+
+## 🗄️ Core Components
+
+### 1. **AI Provider Abstraction** (`lib/ai/index.ts`)
+
+Enables provider switching via `AI_PROVIDER` environment variable:
+
+```typescript
+// getLanguageModel() — for structured output tasks
+// getStreamingModel() — for streaming + tool-use endpoints
+
+switch (process.env.AI_PROVIDER) {
+  case 'ollama': Ollama (local dev, qwen2.5:7b)
+  case 'openai': OpenAI (gpt-4o-mini)
+  case 'anthropic': Anthropic (claude-sonnet-4-6)
+}
+```
+
+**Key insight**: Never hardcode a provider. Always use `getLanguageModel()` or `getStreamingModel()`.
+
+### 2. **Chat Guard** (`lib/chat/guard.ts`)
+
+Classification-based safety layer:
+
+- Uses `generateObject()` with Zod schema
+- Returns `{decision, flags[], confidence, canned_response}`
+- Blocks >= 0.75 confidence decisions with flags present
+- Logs all blocks for audit trail
+
+### 3. **Content Extraction** (`lib/documents/extract.ts`)
+
+Multi-format text extraction:
+- PDF files (pdfjs-dist)
+- Word documents (Mammoth)
+- Plain text files
+- Web URLs (fetch + HTML parsing)
+
+### 4. **Vector Embeddings** (`lib/embeddings/index.ts`)
+
+Document chunking strategy:
+- Semantic/paragraph-based chunks
+- Metadata preservation (source, page number)
+- pgVector storage (768-dim or 1536-dim based on provider)
+- Cosine similarity search
+
+### 5. **Supabase Integration** (`lib/supabase/`)
+
+Three client types:
+- **`server.ts`**: `createServerClient()` — for Server Components & Actions (has service role via cookie)
+- **`client.ts`**: `createBrowserClient()` — for client-side mutations (anon key)
+- **`middleware.ts`**: Auth middleware for token refresh
+
+### 6. **Email Service** (`lib/email/index.ts`)
+
+Uses Resend for transactional emails:
+- Document processing notifications
+- Contact request notifications
+- User onboarding emails
+
+---
+
+## 📊 Database Schema (Key Tables)
+
+| Table | Purpose |
+|-------|---------|
+| `profiles` | Extends `auth.users` with public profile data (username, avatar, full_name) |
+| `personas` | Public chatbot presence per profile; stores `structured_profile` (JSONB) |
+| `documents` | Uploaded files/links; tracks `pipeline_stage` (text_extracting, profile_extracted, etc) |
+| `document_chunks` | Chunked text with pgVector embeddings (768/1536 dimensions) |
+| `chat_sessions` | Visitor conversation sessions per persona |
+| `chat_messages` | Individual turns (role: user\|assistant\|system) |
+| `contact_requests` | Recruiter/marketer connection requests |
+| `notifications` | Email notification queue |
+| `question_analytics` | Topic counts per persona (for insights) |
+| `guard_logs` | Safety guard decisions (BLOCK reasons + confidence) |
+
+---
+
+## 🎯 Key User Flows
+
+### 1. **Profile Setup (Jobseeker)**
+```
+Signup → Create Persona → Upload Documents/Links 
+  → Pipeline Processes (stages 1, 2a, 2b)
+  → Profile Ready → Public URL (ask-me.com/@username)
+```
+
+### 2. **Chat Interaction (Recruiter/Visitor)**
+```
+Visit @username → Content Guard checks message
+  → Chat Agent routes to:
+     • Structured profile lookup
+     • Vector search on docs
+     • Fitment scoring
+  → Response streamed to visitor
+  → Session stored + guard_logs if blocked
+```
+
+### 3. **Profile Owner Dashboard**
+```
+Login → View Upload Status
+     → See Chat Conversations
+     → Manage Contact Requests
+     → Review Guard Blocks
+```
+
+---
+
+## 🛠️ Important Development Commands
+
+```bash
+npm run dev              # Start dev server (localhost:3000) with Turbopack
+npm run type-check      # TypeScript validation (no emit)
+npm run lint            # ESLint check
+npm test                # Vitest unit tests
+npm run test:e2e        # Playwright E2E tests
+npm run db:migrate      # Push migrations to Supabase
+npm run db:reset        # Reset local Supabase DB
+npm run db:seed         # Seed dev database
+npm run db:types        # Regenerate TypeScript types from schema
+```
+
+---
+
+## 🎨 Design System
+
+**Dark-first design** with warm, professional aesthetic:
+
+### Color Palette
+- **Background**: `base.DEFAULT` (#0a0a0a) → `base.surface` → `base.raised`
+- **Text**: `ink.DEFAULT` (warm white) → `ink.secondary` → `ink.muted`
+- **Accent**: `gold.DEFAULT` (#c9a96e)
+
+### Typography
+- **Display**: Instrument Serif (`font-serif`)
+- **UI**: Inter (`font-sans`)
+
+---
+
+## 🧪 Testing Strategy
+
+### Unit Tests (Vitest)
+- Pure functions in `lib/`
+- Validation schemas (Zod)
+- Utility functions
+
+**Location**: `tests/unit/`
+
+### Integration Tests (Vitest + Supabase)
+- API route handlers
+- Database queries
+- Supabase client interactions
+
+### E2E Tests (Playwright)
+- Critical user journeys (signup, upload, chat, contact request)
+- Visual regression (optional)
+
+**Location**: `tests/e2e/`
+
+---
+
+## 🚀 Deployment & Environment
+
+### Hosting
+- **Frontend & API**: Vercel
+- **Database**: Supabase (PostgreSQL)
+- **Email**: Resend
+
+### Environment Variables (Critical)
+
+```env
+# Supabase
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=...
+
+# AI Provider
+AI_PROVIDER=ollama|openai|anthropic  (default: ollama)
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=qwen2.5:7b
+OLLAMA_NUM_CTX=16384
+
+# OpenAI (if AI_PROVIDER=openai)
+OPENAI_API_KEY=...
+OPENAI_MODEL=gpt-4o-mini
+
+# Anthropic (if AI_PROVIDER=anthropic)
+ANTHROPIC_API_KEY=...
+ANTHROPIC_MODEL=claude-sonnet-4-6
+
+# Email
+RESEND_API_KEY=...
+
+# Embedding
+EMBEDDING_DIMENSIONS=768  (dev) or 1536 (prod)
+```
+
+---
+
+## 🔑 Key Architectural Decisions
+
+1. **Provider Abstraction**: Switch AI vendors without code changes (Ollama → OpenAI → Anthropic)
+2. **Server-First Components**: Minimizes client JS; server-side auth + data fetching by default
+3. **Deterministic Pipeline**: State machine with no LLM-driven routing; only execution uses AI
+4. **Parallel Stages**: Document processing stages 2a & 2b run independently for speed
+5. **Two-Layer Guard**: Fast classifier + fallback guardrails for safety
+6. **Structured Extraction**: JSONB `structured_profile` for typed facts (skills, experience)
+7. **Vector Search**: Semantic search on document chunks with pgVector
+8. **Audit Trail**: `guard_logs` + `question_analytics` for monitoring & insights
+
+---
+
+## ✅ Conventions to Follow
+
+| Area | Convention |
+|------|-----------|
+| **Server vs Client** | Default to Server Components; use `'use client'` only for interactivity/hooks |
+| **Data Fetching** | Server Components for initial data; SWR/React Query for mutations |
+| **AI Usage** | Always `getLanguageModel()` or `getStreamingModel()` — never hardcode |
+| **Embeddings** | Verify `EMBEDDING_DIMENSIONS` matches model (768 or 1536) |
+| **Error Handling** | All API routes return `{ error: string }` with appropriate HTTP status |
+| **Logging** | Use `@/lib/logger` (Pino); never `console.log` |
+| **Validation** | All inputs validated with Zod before processing |
+| **Auth** | `createServerClient()` (Server) vs `createBrowserClient()` (Client) |
+| **Route Groups** | Use parentheses `(auth)`, `(dashboard)`, `(public)` to hide from URL |
+
+---
+
+## 📌 Summary
+
+**Ask-me** is a multi-stage document processing + conversational AI platform with:
+
+- **Flexible AI**: Pluggable provider system (local Ollama or cloud APIs)
+- **Safe interactions**: Two-layer guard system + security-first document validation
+- **Scalable processing**: Parallel pipeline stages for efficient document handling
+- **Type-safe**: Full TypeScript strict mode + Zod validation
+- **Production-ready**: Supabase + Vercel, comprehensive testing (unit + E2E)
+- **User-centric**: Separate flows for profile owners and visitors
+
+The architecture prioritizes **developer experience** (provider agnosticism, clear separation of concerns) and **user safety** (multi-layer defenses, audit trails).
